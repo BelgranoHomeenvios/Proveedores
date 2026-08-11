@@ -119,14 +119,18 @@ function getProveedores(){let p=read(K_PROV,null);if(!p){write(K_PROV,PROV_INI);
 function setProveedores(l){write(K_PROV,l);state.proveedores=l}
 
 // ====== Nube (Supabase) ======
-const SUPA_URL='https://lyppcndfgwhxjjgpqufp.supabase.co';
-const SUPA_KEY='sb_publishable_f9MJ9jnBPDXBRbLbtDj69g_NgR3iOgV';
+// ⬇️⬇️⬇️  PEGÁ ACÁ LOS DATOS DE TU NUEVO PROYECTO SUPABASE  ⬇️⬇️⬇️
+// (Supabase → tu proyecto → Project Settings → Data API para la URL, y API Keys para la clave)
+const SUPA_URL='https://irlunnowclzbpkdmqnpn.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlybHVubm93Y2x6YnBrZG1xbnBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NTY5MzksImV4cCI6MjEwMjAzMjkzOX0.SgxAgz0OUZZwZgCw0L0dnHNFCpTU3kV6ttT7uEL2IxU';
+// ⬆️⬆️⬆️  eso es lo único que tenés que cambiar  ⬆️⬆️⬆️
 const APP='muebles';
 let db=null;
 function initDb(){try{if(window.supabase){db=window.supabase.createClient(SUPA_URL,SUPA_KEY);return true}}catch(e){}return false}
 function banner(msg,tipo){let b=document.getElementById('banner');if(!b){b=document.createElement('div');b.id='banner';document.body.appendChild(b)}b.className='banner '+(tipo||'');b.innerHTML=msg;b.style.display='block';if(tipo!=='load'){clearTimeout(banner._t);banner._t=setTimeout(()=>{b.style.display='none'},3500)}}
 function ocultarBanner(){const b=document.getElementById('banner');if(b)b.style.display='none'}
 function avisoError(e){console.error(e);banner('⚠️ No se pudo sincronizar con la nube. Revisá tu internet.','err')}
+function conTimeout(p,ms){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))])}
 async function supaLoad(){const {data,error}=await db.from('store').select('kind,id,data').eq('app',APP);if(error)throw error;
   return {entregas:data.filter(r=>r.kind==='entrega').map(r=>r.data),pedidos:data.filter(r=>r.kind==='pedido').map(r=>r.data),proveedores:data.filter(r=>r.kind==='proveedor').map(r=>r.data)}}
 async function supaUpsert(kind,obj){const {error}=await db.from('store').upsert({app:APP,kind,id:obj.id,data:obj},{onConflict:'app,kind,id'});if(error)throw error}
@@ -159,12 +163,14 @@ function mostrarLogin(){
 }
 async function entrarApp(){
   banner('<span class="spin"></span> Cargando datos de la nube…','load');
-  try{const {entregas,pedidos,proveedores}=await supaLoad();
+  let user=null;
+  try{const {data}=await db.auth.getSession();user=(data&&data.session&&data.session.user)||null;}catch(e){}
+  try{const {entregas,pedidos,proveedores}=await conTimeout(supaLoad(),9000);
     state.entregas=entregas;write(K_ENT,entregas);state.pedidos=pedidos;write(K_PED,pedidos);
-    if(proveedores.length){state.proveedores=proveedores;write(K_PROV,proveedores)}else{state.proveedores=getProveedores();await supaUpsertKind('proveedor',state.proveedores)}
+    if(proveedores.length){state.proveedores=proveedores;write(K_PROV,proveedores)}else{state.proveedores=getProveedores();await supaUpsertKind('proveedor',state.proveedores).catch(()=>{})}
     ocultarBanner();
   }catch(e){state.entregas=getEntregas();state.pedidos=getPedidos();state.proveedores=getProveedores();avisoError(e)}
-  const {data:{user}}=await db.auth.getUser();
+  // Pase lo que pase con la nube, la app SIEMPRE se dibuja (nunca pantalla en blanco):
   document.getElementById('userEmail').textContent='👤 '+(user?user.email:'');
   document.getElementById('topActions').style.display='flex';
   document.getElementById('tabs').style.display='flex';
@@ -172,7 +178,7 @@ async function entrarApp(){
 }
 async function start(){
   if(!initDb()){view.innerHTML='<div class="card" style="margin:24px">No se pudo cargar la conexión con la nube. Revisá tu internet y recargá la página (Ctrl+F5).</div>';return}
-  try{const {data:{session}}=await db.auth.getSession();if(session)return entrarApp()}catch(e){}
+  try{const s=await conTimeout(db.auth.getSession(),6000);if(s&&s.data&&s.data.session)return entrarApp()}catch(e){}
   mostrarLogin();
 }
 
